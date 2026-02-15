@@ -3,17 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- This does the instant redirect (0 seconds delay) -->
-    <meta http-equiv="refresh" content="0; url=WebApp/bleWebApp_iCenta/">
-    
-    <title>Redirecting to WebApp</title>
+    <title>Protected Access</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.9.0/sha256.min.js"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 50px; }
+        input { padding: 10px; width: 250px; margin: 10px; }
+        button { padding: 10px 20px; }
+        #error { color: red; margin-top: 10px; }
+    </style>
 </head>
 <body>
-    <p>If you are not redirected automatically, <a href="WebApp/bleWebApp_iCenta/">click here</a>.</p>
-    
-    <!-- Optional: JavaScript fallback (in case meta refresh is blocked) -->
+    <h1>Enter Password</h1>
+    <input type="password" id="password" placeholder="Password">
+    <br>
+    <button onclick="checkPassword()">Unlock</button>
+    <p id="error"></p>
+
     <script>
-        window.location.href = "WebApp/bleWebApp_iCenta/";
+    function checkPassword() {
+        const pass = document.getElementById('password').value;
+        if (!pass) {
+            document.getElementById('error').textContent = 'Please enter a password';
+            return;
+        }
+
+        const hash = sha256(pass);  // Computes SHA-256 hex
+        const targetUrl = hash + '/';  // Folder name = hash + trailing slash for directory
+
+        // Optional: Test if the page exists before redirect
+        fetch(targetUrl + 'index.html', { method: 'HEAD' })
+            .then(response => {
+                if (response.ok) {
+                    window.location.href = targetUrl;
+                } else {
+                    document.getElementById('error').textContent = 'Incorrect password';
+                }
+            })
+            .catch(() => {
+                document.getElementById('error').textContent = 'Error checking access';
+            });
+    }
     </script>
 </body>
 </html>
