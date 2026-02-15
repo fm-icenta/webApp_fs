@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Web Serial Input Demo</title>
+  <meta http-equiv="Permissions-Policy" content="serial=*" />
+  <style>
+    body { font-family: Arial; padding: 20px; }
+    input, button { margin: 5px; padding: 10px; }
+    #message { width: 300px; }
+    pre {
+      background: #f0f0f0;
+      padding: 10px;
+      height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      border: 1px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+  <h2>Web Serial with Input</h2>
+
+  <button id="connect">Connect Serial</button>
+  <input type="text" id="message" placeholder="Type your message here" />
+  <button id="send" disabled>Send</button>
+
+  <pre id="output">Console:\n</pre>
+
+  <script>
+    let port, reader, inputDone, outputDone, outputStream, writer;
+
+    const connectButton = document.getElementById('connect');
+    const sendButton = document.getElementById('send');
+    const output = document.getElementById('output');
+    const messageInput = document.getElementById('message');
+
+    function log(msg) {
+      output.innerText += msg + '\n';
+      output.scrollTop = output.scrollHeight;
+      console.log(msg);
+    }
+
+    connectButton.addEventListener('click', async () => {
+      log('🟢 Connect button clicked');
+      if (!('serial' in navigator)) {
+        log('❌ Web Serial API not supported. Use Chrome on HTTPS or localhost.');
+        return;
+      }
+
+      try {
+        log('🔍 Requesting port...');
+        port = await navigator.serial.requestPort();
+        log('✅ Port selected');
+
+        await port.open({ baudRate: 9600 });
+        log('🔌 Port opened');
+
+        sendButton.disabled = false;
+
+        const decoder = new TextDecoderStream();
+        inputDone = port.readable.pipeTo(decoder.writable);
+        reader = decoder.readable.getReader();
+
+        readLoop();
+      } catch (err) {
+        log('❌ Error opening port: ' + err.message);
+      }
+    });
+
+    sendButton.addEventListener('click', async () => {
+      const textToSend = messageInput.value || '';
+      if (textToSend === '') {
+        log('⚠️ Message is empty, not sending.');
+        return;
+      }
+
+      try {
+        if (!writer) {
+          const encoder = new TextEncoderStream();
+          outputDone = encoder.readable.pipeTo(port.writable);
+          outputStream = encoder.writable;
+          writer = outputStream.getWriter();
+        }
+
+        await writer.write(textToSend + '\n');
+        log('📤 Sent: ' + textToSend);
+        messageInput.value = ''; // Clear the input
+      } catch (err) {
+        log('❌ Error writing to serial: ' + err.message);
+      }
+    });
+
+    async function readLoop() {
+      log('📡 Starting read loop...');
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            log('⏹️ Reader closed');
+            break;
+          }
+          log('📨 Received: ' + value);
+        }
+      } catch (error) {
+        log('❌ Read error: ' + error.message);
+      }
+    }
+
+    window.addEventListener('unload', async () => {
+      if (reader) {
+        await reader.cancel();
+        await inputDone.catch(() => {});
+        reader = null;
+      }
+      if (writer) {
+        writer.releaseLock();
+        writer = null;
+      }
+      if (outputStream) {
+        await outputStream.getWriter().close();
+        await outputDone;
+        outputStream = null;
+      }
+      if (port) {
+        await port.close();
+        port = null;
+      }
+    });
+  </script>
+</body>
+</html>

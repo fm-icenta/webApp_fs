@@ -1,1 +1,97 @@
-Hello
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BLE WebApp</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <!-- <link rel="icon" type="image/png" href=""> -->
+    <link rel="icon" type="image/x-icon" href="favicon/picupmedia.ico">    
+    <link rel="stylesheet" href="style.css">
+    <script src="js/commons.js"></script>        
+    <script src="js/utility.js"></script>      
+    <script src="js/app_cfg.js"></script>     
+    <script src="js/glb_cmd.js"></script>   
+    <script src="js/ui_dual_frame.js"></script>        
+    <!-- <script src="js/glb_ui.js"></script>         -->
+    <style>
+        /* Style for tabs */
+        .tab-container {
+            display: flex;
+            border-bottom: 2px solid #80c8b5;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            background: #b9cae0;
+            outline: none;
+        }
+        .tab.active {
+            background: #ddd;
+            font-weight: bold;
+        }
+        .tab-content {
+            display: none;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-top: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <script>
+        console.log(_get_commons_ver());        
+        console.log(appCfg.appInfo.title); 
+        console.log(appCfg.appParam); 
+        document.addEventListener("DOMContentLoaded", () => {
+            document.documentElement.style.backgroundColor = "lightgrey";
+            document.documentElement.style.color = "black";
+        });
+    </script>
+
+    <!-- Tab Buttons -->
+    <div class="tab-container">
+        <button class="tab active" onclick="openTab(event, 'bleTab')">BLE</button>
+    </div>
+
+    <!-- BLE Tab Content -->
+    <div id="bleTab" class="tab-content active">       
+    </div>
+
+    <!-- Log Section -->
+    <div id="logContainer"></div>
+
+    <!-- Import JavaScript Files -->
+    <script src="js/log.js"></script> 
+    <script src="js/ble.js"></script>
+    <script src="js/webSerial.js"></script>         
+    <script src="js/ble_ui.js"></script>       
+    <!-- <script src="js/glb_led.js"></script>          
+    <script src="js/glb_turntable.js"></script>    
+    <script src="js/mfg_ui.js"></script>         -->
+    <!-- <script src="js/info.js"></script> -->
+    <!-- <script src="js/test.js"></script>    
+    <script src="js/test_ui.js"></script> -->
+
+    <script>
+        // Function to handle tab switching
+        function openTab(event, tabName) {
+            let i, tabContent, tabLinks;
+            tabContent = document.getElementsByClassName("tab-content");
+            for (i = 0; i < tabContent.length; i++) {
+                tabContent[i].classList.remove("active");
+            }
+            tabLinks = document.getElementsByClassName("tab");
+            for (i = 0; i < tabLinks.length; i++) {
+                tabLinks[i].classList.remove("active");
+            }
+            document.getElementById(tabName).classList.add("active");
+            event.currentTarget.classList.add("active");
+        }
+    </script>
+</body>
+</html>
