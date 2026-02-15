@@ -1,0 +1,6 @@
+{
+    "scripts" :[
+    { "macro": [{"component":"turntable_synced","action":"rotate_clockwise","rotate_angle":45.2,"rotate_speed":12,"insert_id":"019614a5-e2ad-7e4e-8110-f07ba42361c0"}]},                                      
+    { "macro": [{"component":"turntable_synced","action":"rotate_counter_clockwise","rotate_angle":45.2,"rotate_speed":6,"insert_id":"019614a5-e2ad-7e4e-8110-f07ba42361c0"}]}                                      
+    ]
+}

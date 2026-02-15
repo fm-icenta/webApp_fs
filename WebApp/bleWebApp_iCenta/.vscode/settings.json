@@ -1,0 +1,10 @@
+{
+    "liveServer.settings.root": "/",
+    "liveServer.settings.https": {
+      "enable": true,
+      "cert": "C:/myData/git/git_working/gitlab_heig/working/gemlightbox/bleWebApp/certificate//localhost.pem",
+      "key": "C:/myData/git/git_working/gitlab_heig/working/gemlightbox/bleWebApp/certificate/localhost.key",
+      "passphrase": "Fm702833"
+    }
+  }
+  
