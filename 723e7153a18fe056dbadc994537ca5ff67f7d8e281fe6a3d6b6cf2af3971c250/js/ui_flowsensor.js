@@ -1,134 +1,236 @@
 // ui_flowsensor.js
-// Single-frame command panel for FlowSensor tab
-// Chart title now shows the latest flow rate dynamically
+// FlowSensor UI with offline Chart.js (loaded via HTML script tags)
 
-// ── Globals ────────────────────────────────────────────────
-window.fsLogger = null;
+(() => {
+  'use strict';
 
-// State for flow rate calculation & chart
-let lastAccCount = null;
-let lastTimestamp = null;
-let flowRateChart = null;
-let rateData = [];
-let latestRate = 0;  // ← NEW: track the most recent flow rate for title
+  // ══════════════════════════════════════════════════════════════
+  // GLOBALS & STATE
+  // ══════════════════════════════════════════════════════════════
 
-// Load Chart.js + date adapter from CDN
-if (!window.Chart) {
-  const chartScript = document.createElement('script');
-  chartScript.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js';
-  document.head.appendChild(chartScript);
+  window.fsLogger = null;
 
-  const adapterScript = document.createElement('script');
-  adapterScript.src = 'https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js';
-  adapterScript.onload = () => {
-    console.log('Chart.js + date-fns adapter loaded');
-    if (document.getElementById('flowRateCanvas') && !flowRateChart) {
-      initChart();
-    }
+  let lastAccCount = null;
+  let lastTimestamp = null;
+  let flowRateChart = null;
+  let rateData = [];
+  let latestRate = 0;
+
+  const CONFIG = {
+    windowSize: 20000,    // 20 seconds
+    maxDataPoints: 200,
   };
-  adapterScript.onerror = () => console.error('Failed to load date-fns adapter');
-  document.head.appendChild(adapterScript);
-}
 
-window.onFlowSensorData = function (cmd) {
-  if (!cmd || typeof cmd !== 'object' || !window.fsLogger) return;
+  // ══════════════════════════════════════════════════════════════
+  // CHART INITIALIZATION
+  // ══════════════════════════════════════════════════════════════
 
-  console.log('onFlowSensorData', cmd);
+  function initChart(canvasId, fallbackDiv) {
+    if (flowRateChart) {
+      console.warn('Chart already initialized');
+      return;
+    }
 
-  const flowrate = Number(cmd.cps ?? cmd.data ?? null);
-  const currentAcc = Number(cmd.acc_cnt ?? cmd.data ?? null);
+    // Verify Chart.js is loaded
+    if (typeof Chart === 'undefined') {
+      console.error('Chart.js not loaded! Add <script> tags in HTML.');
+      if (fallbackDiv) {
+        fallbackDiv.textContent = '⚠ Chart.js not found';
+        fallbackDiv.style.color = '#f44336';
+      }
+      return;
+    }
 
-  if (currentAcc === null || isNaN(currentAcc)) {
-    window.fsLogger(`RX: invalid data`, 'warning');
-    return;
-  }
+    try {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) {
+        throw new Error(`Canvas #${canvasId} not found`);
+      }
 
-  const now = Date.now();
-  let rate = 0;
-  let rateText = ' → first reading';
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Cannot get 2D context');
+      }
 
-  if (lastAccCount !== null && lastTimestamp !== null) {
-    const Δcount = currentAcc - lastAccCount;
-    const Δt_ms  = now - lastTimestamp;
-    const Δt_sec = Δt_ms / 1000;
+      flowRateChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          datasets: [{
+            label: 'Flow Rate (pulses/sec)',
+            borderColor: '#00ff9d',
+            backgroundColor: 'rgba(0, 255, 157, 0.12)',
+            borderWidth: 2,
+            tension: 0.15,
+            fill: true,
+            pointRadius: 0,
+            data: rateData
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 0 },
+          plugins: {
+            legend: {
+              display: true,
+              labels: { color: '#ddd', font: { size: 12 } }
+            },
+            title: {
+              display: true,
+              text: `Real-time Flow Rate (last 20 s) — Latest: 0.0 pulses/sec`,
+              color: '#eee',
+              font: { size: 14 }
+            }
+          },
+          scales: {
+            x: {
+              type: 'time',
+              time: {
+                unit: 'second',
+                displayFormats: { second: 'HH:mm:ss' }
+              },
+              ticks: { 
+                color: '#aaa', 
+                maxTicksLimit: 10, 
+                maxRotation: 45 
+              },
+              grid: { color: '#333' },
+              min: Date.now() - CONFIG.windowSize,
+              max: Date.now()
+            },
+            y: {
+              beginAtZero: true,
+              suggestedMax: 300,
+              ticks: { color: '#aaa', stepSize: 50 },
+              grid: { color: '#333' },
+              title: { 
+                display: true, 
+                text: 'pulses/sec', 
+                color: '#ccc' 
+              }
+            }
+          }
+        }
+      });
 
-    if (Δt_sec > 0.001) {
-      rate = Δcount / Δt_sec;
-      rateText = ` → ${rate.toFixed(1)} pulses/sec`;
-    } else {
-      rateText = ' → (Δt too small)';
+      if (fallbackDiv) {
+        fallbackDiv.style.display = 'none';
+      }
+
+      console.log('✓ Chart initialized successfully');
+
+    } catch (err) {
+      console.error('Chart initialization failed:', err);
+      if (fallbackDiv) {
+        fallbackDiv.textContent = `⚠ Chart error: ${err.message}`;
+        fallbackDiv.style.color = '#f44336';
+      }
     }
   }
 
-  // Update latest rate for chart title
-  latestRate = rate;
+  // ══════════════════════════════════════════════════════════════
+  // DATA HANDLER
+  // ══════════════════════════════════════════════════════════════
 
-  window.fsLogger(`RX: acc=${currentAcc}  |  ${flowrate ? flowrate.toFixed(1)+' cps' : '—'}${rateText}`);
+  window.onFlowSensorData = function (cmd) {
+    if (!cmd || typeof cmd !== 'object' || !window.fsLogger) return;
 
-  // Update chart (last 20 seconds)
-  if (flowRateChart) {
-    const point = { x: now, y: rate || 0 };
-    rateData.push(point);
-
-    const cutoff = now - 20000;
-    rateData = rateData.filter(p => p.x >= cutoff);
-
-    flowRateChart.data.datasets[0].data = rateData;
-    flowRateChart.options.scales.x.min = now - 20000;
-    flowRateChart.options.scales.x.max = now;
-
-    // Update title dynamically
-    flowRateChart.options.plugins.title.text = 
-      `Real-time Flow Rate (last 20 s) — Latest: ${latestRate.toFixed(1)} pulses/sec`;
-
-    flowRateChart.update('none');
-    console.log('Chart updated – visible points:', rateData.length);
-  } else {
-    console.warn('Chart not ready yet – skipping update');
-  }
-
-  lastAccCount  = currentAcc;
-  lastTimestamp = now;
-};
-
-
-document.addEventListener('DOMContentLoaded', () => {
-  const tabContainer = document.querySelector('.tab-container');
-  if (!tabContainer) {
-    console.error('FlowSensor UI: .tab-container not found');
-    return;
-  }
-
-  const panelCfg = appCfg?.ui?.flowsensor_Panel ?? null;
-  const frames = Array.isArray(panelCfg?.Frames) ? panelCfg.Frames : [];
-
-  console.log('FlowSensor panel config:', panelCfg);
-
-  const panelId = 'uiFlowSensorTab';
-  let panel = document.getElementById(panelId);
-  if (!panel) {
-    panel = document.createElement('div');
-    panel.id = panelId;
-    panel.className = 'tab-content';
-
-    const logContainer = document.getElementById('logContainer');
-    if (logContainer?.parentNode) {
-      logContainer.parentNode.insertBefore(panel, logContainer);
-    } else {
-      document.body.appendChild(panel);
+    const currentAcc = Number(cmd.acc_cnt ?? cmd.data ?? NaN);
+    if (isNaN(currentAcc)) {
+      window.fsLogger('RX: invalid data', 'warning');
+      return;
     }
-  }
 
-  const tabBtn = document.createElement('button');
-  tabBtn.className = 'tab';
-  tabBtn.textContent = 'FlowSensor';
-  tabBtn.onclick = e => {
-    if (typeof openTab === 'function') openTab(e, panelId);
-    else panel.style.display = 'block';
+    const now = Date.now();
+    let rate = 0;
+    let rateText = ' → first reading';
+
+    if (lastAccCount !== null && lastTimestamp !== null) {
+      const Δcount = currentAcc - lastAccCount;
+      const Δt_sec = (now - lastTimestamp) / 1000;
+
+      if (Δt_sec > 0.001) {
+        rate = Δcount / Δt_sec;
+        rateText = ` → ${rate.toFixed(1)} pulses/sec`;
+      } else {
+        rateText = ' → (Δt too small)';
+      }
+    }
+
+    latestRate = rate;
+
+    const flowrate = Number(cmd.cps ?? NaN);
+    const cpsText = !isNaN(flowrate) ? flowrate.toFixed(1) + ' cps' : '—';
+
+    window.fsLogger(`RX: acc=${currentAcc}  |  ${cpsText}${rateText}`);
+
+    // Update chart
+    if (flowRateChart) {
+      rateData.push({ x: now, y: rate });
+
+      // Remove old data outside window
+      const cutoff = now - CONFIG.windowSize;
+      rateData = rateData.filter(p => p.x >= cutoff);
+
+      // Limit array size
+      if (rateData.length > CONFIG.maxDataPoints) {
+        rateData = rateData.slice(-CONFIG.maxDataPoints);
+      }
+
+      flowRateChart.data.datasets[0].data = rateData;
+      flowRateChart.options.scales.x.min = cutoff;
+      flowRateChart.options.scales.x.max = now;
+
+      // Update title with latest rate
+      flowRateChart.options.plugins.title.text =
+        `Real-time Flow Rate (last 20 s) — Latest: ${latestRate.toFixed(1)} pulses/sec`;
+
+      flowRateChart.update('none');
+    }
+
+    lastAccCount = currentAcc;
+    lastTimestamp = now;
   };
-  tabContainer.appendChild(tabBtn);
 
-  if (!document.getElementById('ui-flowsensor-css')) {
+  // ══════════════════════════════════════════════════════════════
+  // UTILITIES
+  // ══════════════════════════════════════════════════════════════
+
+  function createLogger(logDiv) {
+    logDiv.addEventListener('dblclick', () => {
+      logDiv.replaceChildren();
+    });
+
+    return (message, className = '') => {
+      const now = new Date();
+      const time = now.toLocaleTimeString([], { hour12: false });
+      const ms = String(now.getMilliseconds()).padStart(3, '0').slice(0, 2);
+
+      const line = document.createElement('div');
+      line.className = 'fs-log-entry' + (className ? ' ' + className : '');
+      line.textContent = `[${time}.${ms}] ${message}`;
+
+      logDiv.appendChild(line);
+      logDiv.scrollTop = logDiv.scrollHeight;
+
+      // Prevent memory bloat
+      while (logDiv.children.length > 100) {
+        logDiv.firstChild.remove();
+      }
+    };
+  }
+
+  function sendCommand(cmd) {
+    if (typeof sendGlbCmd === 'function') {
+      sendGlbCmd(cmd);
+    } else {
+      console.log('FlowSensor →', cmd);
+    }
+  }
+
+  function injectCSS() {
+    if (document.getElementById('ui-flowsensor-css')) return;
+
     const style = document.createElement('style');
     style.id = 'ui-flowsensor-css';
     style.textContent = `
@@ -160,8 +262,6 @@ document.addEventListener('DOMContentLoaded', () => {
       .fs-log {
         width: 100%;
         height: 100px;
-        min-height: 100px;
-        max-height: 100px;
         overflow-y: auto;
         border: 2px solid #000;
         border-radius: 6px;
@@ -177,10 +277,8 @@ document.addEventListener('DOMContentLoaded', () => {
         padding: 3px 4px;
         border-bottom: 1px solid #222;
       }
-      .fs-log-entry.warning {
-        color: #ff9800;
-      }
-
+      .fs-log-entry.warning { color: #ff9800; }
+      
       .slider-container {
         flex: 1;
         display: flex;
@@ -202,17 +300,13 @@ document.addEventListener('DOMContentLoaded', () => {
         color: #0a64d1;
       }
       input[type="range"] {
-        -webkit-appearance: none;
         appearance: none;
         height: 8px;
-        background: #e0e0e0;
+        background: linear-gradient(to right, #0a64d1 var(--value, 0%), #e0e0e0 var(--value, 0%));
         border-radius: 4px;
-        outline: none;
         flex: 1;
-        background: linear-gradient(to right, #0a64d1 0%, #0a64d1 var(--value, 0%), #e0e0e0 var(--value, 0%), #e0e0e0 100%);
       }
       input[type="range"]::-webkit-slider-thumb {
-        -webkit-appearance: none;
         appearance: none;
         width: 20px;
         height: 20px;
@@ -220,28 +314,12 @@ document.addEventListener('DOMContentLoaded', () => {
         border-radius: 50%;
         cursor: pointer;
         box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-        transition: all 0.15s;
+        transition: transform 0.15s;
       }
-      input[type="range"]::-webkit-slider-thumb:hover,
-      input[type="range"]::-webkit-slider-thumb:active {
-        background: #094fc2;
+      input[type="range"]::-webkit-slider-thumb:hover {
         transform: scale(1.15);
       }
-      input[type="range"]::-moz-range-thumb {
-        width: 20px;
-        height: 20px;
-        background: #0a64d1;
-        border: none;
-        border-radius: 50%;
-        cursor: pointer;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-      }
-      input[type="range"]::-moz-range-track {
-        height: 8px;
-        background: #e0e0e0;
-        border-radius: 4px;
-      }
-
+      
       .chart-container {
         position: relative;
         height: 260px;
@@ -251,50 +329,38 @@ document.addEventListener('DOMContentLoaded', () => {
         border-radius: 6px;
         margin-top: 12px;
       }
+      .chart-fallback {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: #888;
+        font-size: 14px;
+      }
     `;
     document.head.appendChild(style);
   }
 
-  const createLogger = logDiv => {
-    logDiv.addEventListener('dblclick', () => logDiv.replaceChildren());
+  // ══════════════════════════════════════════════════════════════
+  // FRAME BUILDER
+  // ══════════════════════════════════════════════════════════════
 
-    return (message, className = '') => {
-      const now = new Date();
-      const time = now.toLocaleTimeString([], {hour12: false});
-      const ms = String(now.getMilliseconds()).padStart(3, '0').slice(0,2);
-      const ts = `${time}.${ms}`;
-
-      const line = document.createElement('div');
-      line.className = 'fs-log-entry' + (className ? ' ' + className : '');
-      line.textContent = `[${ts}] ${message}`;
-
-      logDiv.appendChild(line);
-      logDiv.scrollTop = logDiv.scrollHeight;
-    };
-  };
-
-  const sendCommand = cmd => {
-    if (typeof sendGlbCmd === 'function') {
-      sendGlbCmd(cmd);
-    } else {
-      console.log('FlowSensor →', cmd);
-    }
-  };
-
-  const buildFrame = (cfg = {}) => {
+  function buildFrame(cfg = {}) {
     const frame = document.createElement('div');
     frame.className = 'fs-frame';
 
+    // Title
     const title = document.createElement('div');
     title.className = 'fs-title';
     title.textContent = cfg.Title || 'FlowSensor';
     frame.appendChild(title);
 
+    // Command row
     const cmdRow = document.createElement('div');
     cmdRow.className = 'fs-row';
 
     const select = document.createElement('select');
-    Object.assign(select.style, { width: '160px', minWidth: '160px', flex: '0 0 auto' });
+    Object.assign(select.style, { width: '160px', flex: '0 0 auto' });
 
     const commands = Array.isArray(cfg.Command) ? cfg.Command : [];
     commands.forEach(cmd => {
@@ -306,16 +372,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const input = document.createElement('input');
     input.type = 'text';
     input.placeholder = 'Enter command (JSON or text)';
-    input.style.flex = '1 1 auto';
-
-    if (commands.length > 0) input.value = JSON.stringify(commands[0]);
+    input.style.flex = '1';
+    input.value = commands.length > 0 ? JSON.stringify(commands[0]) : '';
 
     const sendBtn = document.createElement('button');
     sendBtn.textContent = 'Send';
-    sendBtn.style.marginLeft = 'auto';
 
     cmdRow.append(select, input, sendBtn);
 
+    // Slider row
     const sliderRow = document.createElement('div');
     sliderRow.className = 'slider-container';
 
@@ -328,138 +393,57 @@ document.addEventListener('DOMContentLoaded', () => {
     slider.min = 3;
     slider.max = 800;
     slider.value = 100;
-    slider.step = 1;
 
     const valueDisplay = document.createElement('span');
     valueDisplay.className = 'slider-value';
-    valueDisplay.textContent = '100';
+    valueDisplay.textContent = '100 Hz';
 
-    const updateVisual = () => {
+    slider.addEventListener('input', () => {
       const val = slider.value;
-      slider.style.setProperty('--value', val);
-      valueDisplay.textContent = val + " Hz";
-    };
+      const percent = ((val - 3) / (800 - 3)) * 100;
+      slider.style.setProperty('--value', `${percent}%`);
+      valueDisplay.textContent = val + ' Hz';
+    });
 
-    const sendOnRelease = () => {
-      const val = Number(slider.value);
-      const cmdPayload = {
-        component: "pulse",
-        action: `0:${val}`,
-        insert_id: "pulser"
+    slider.addEventListener('change', () => {
+      const payload = {
+        component: 'pulse',
+        action: `0:${slider.value}`,
+        insert_id: 'pulser'
       };
-      const jsonString = JSON.stringify(cmdPayload);
+      const jsonString = JSON.stringify(payload);
       input.value = jsonString;
       sendCommand(jsonString);
-    };
+    });
 
-    slider.addEventListener('input', updateVisual);
-    slider.addEventListener('change', sendOnRelease);
-    updateVisual();
+    slider.dispatchEvent(new Event('input'));
 
     sliderRow.append(label, slider, valueDisplay);
 
+    // Log
     const logDiv = document.createElement('div');
     logDiv.className = 'fs-log';
+    window.fsLogger = createLogger(logDiv);
 
-    const log = createLogger(logDiv);
-    window.fsLogger = log;
-
+    // Chart
     const chartContainer = document.createElement('div');
     chartContainer.className = 'chart-container';
 
     const canvas = document.createElement('canvas');
     canvas.id = 'flowRateCanvas';
-    chartContainer.appendChild(canvas);
 
     const fallback = document.createElement('div');
-    fallback.style.position = 'absolute';
-    fallback.style.top = '50%';
-    fallback.style.left = '50%';
-    fallback.style.transform = 'translate(-50%, -50%)';
-    fallback.style.color = '#888';
-    fallback.style.fontSize = '14px';
-    fallback.textContent = 'Chart loading...';
-    chartContainer.appendChild(fallback);
+    fallback.className = 'chart-fallback';
+    fallback.textContent = 'Initializing chart...';
 
-    const initChart = () => {
-      if (!window.Chart || flowRateChart) return;
+    chartContainer.append(canvas, fallback);
 
-      console.log('Initializing chart');
+    // Initialize chart
+    setTimeout(() => initChart('flowRateCanvas', fallback), 0);
 
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        console.error('Cannot get canvas context');
-        fallback.textContent = 'Canvas error';
-        return;
-      }
-
-      flowRateChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          datasets: [{
-            label: 'Flow Rate (pulses/sec)',
-            borderColor: '#00ff9d',
-            backgroundColor: 'rgba(0, 255, 157, 0.12)',
-            borderWidth: 2,
-            tension: 0.15,
-            fill: true,
-            pointRadius: 0,
-            data: rateData
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: { duration: 0 },
-          plugins: {
-            legend: { display: true, labels: { color: '#ddd', font: { size: 12 } } },
-            title: {
-              display: true,
-              text: () => `Real-time Flow Rate (last 20 s) — Latest: ${latestRate.toFixed(1)} pulses/sec`,
-              color: '#eee',
-              font: { size: 14 }
-            }
-          },
-          scales: {
-            x: {
-              type: 'time',
-              time: { unit: 'second', displayFormats: { second: 'HH:mm:ss' } },
-              ticks: { color: '#aaa', maxTicksLimit: 10, maxRotation: 45 },
-              grid: { color: '#333' },
-              min: Date.now() - 20000,
-              max: Date.now()
-            },
-            y: {
-              beginAtZero: true,
-              suggestedMax: 300,
-              ticks: { color: '#aaa', stepSize: 50 },
-              grid: { color: '#333' },
-              title: { display: true, text: 'pulses/sec', color: '#ccc' }
-            }
-          }
-        }
-      });
-
-      fallback.style.display = 'none';
-      console.log('Chart initialized successfully');
-    };
-
-    if (window.Chart) {
-      initChart();
-    }
-
+    // Event listeners
     select.addEventListener('change', () => {
-      let value = select.value.trim();
-      if (value && typeof _isJsonStr === 'function' && _isJsonStr(value)) {
-        try {
-          let obj = JSON.parse(value);
-          if (typeof removeKeysWithPrefix === 'function') {
-            obj = removeKeysWithPrefix(JSON.stringify(obj));
-          }
-          if (obj?.macro) value = JSON.stringify(obj.macro);
-        } catch {}
-      }
-      input.value = value;
+      input.value = select.value;
     });
 
     sendBtn.addEventListener('click', () => {
@@ -468,29 +452,87 @@ document.addEventListener('DOMContentLoaded', () => {
 
       let display = cmd;
       try {
-        if (cmd.startsWith('{')) {
-          const parsed = JSON.parse(cmd);
-          if (parsed?.action) display = parsed.action;
-        }
+        const parsed = JSON.parse(cmd);
+        if (parsed?.action) display = parsed.action;
       } catch {}
 
-      log(`TX: ${display}`);
+      window.fsLogger(`TX: ${display}`);
       sendCommand(cmd);
+    });
+
+    input.addEventListener('keypress', e => {
+      if (e.key === 'Enter') sendBtn.click();
     });
 
     frame.append(cmdRow, sliderRow, logDiv, chartContainer);
     return frame;
-  };
-
-  const wrapper = document.createElement('div');
-  wrapper.className = 'fs-wrapper';
-
-  const firstFrameCfg = frames[0] ?? { Title: 'FlowSensor', Command: [] };
-  wrapper.appendChild(buildFrame(firstFrameCfg));
-
-  panel.appendChild(wrapper);
-
-  if (window.fsLogger) {
-    window.fsLogger('Flow sensor ready. Waiting for acc_cnt data...', 'warning');
   }
-});
+
+  // ══════════════════════════════════════════════════════════════
+  // INITIALIZATION
+  // ══════════════════════════════════════════════════════════════
+
+  function init() {
+    const tabContainer = document.querySelector('.tab-container');
+    if (!tabContainer) {
+      console.error('FlowSensor UI: .tab-container not found');
+      return;
+    }
+
+    const panelCfg = window.appCfg?.ui?.flowsensor_Panel ?? {};
+    const frames = Array.isArray(panelCfg.Frames) ? panelCfg.Frames : [];
+
+    const panelId = 'uiFlowSensorTab';
+    let panel = document.getElementById(panelId);
+
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = panelId;
+      panel.className = 'tab-content';
+
+      const logContainer = document.getElementById('logContainer');
+      if (logContainer?.parentNode) {
+        logContainer.parentNode.insertBefore(panel, logContainer);
+      } else {
+        document.body.appendChild(panel);
+      }
+    }
+
+    const tabBtn = document.createElement('button');
+    tabBtn.className = 'tab';
+    tabBtn.textContent = 'FlowSensor';
+    tabBtn.onclick = e => {
+      if (typeof openTab === 'function') {
+        openTab(e, panelId);
+      } else {
+        panel.style.display = 'block';
+      }
+    };
+    tabContainer.appendChild(tabBtn);
+
+    injectCSS();
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'fs-wrapper';
+
+    const frameCfg = frames[0] ?? { Title: 'FlowSensor', Command: [] };
+    wrapper.appendChild(buildFrame(frameCfg));
+
+    panel.appendChild(wrapper);
+
+    if (window.fsLogger) {
+      window.fsLogger('✓ FlowSensor ready. Waiting for data...', 'warning');
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // ENTRY POINT
+  // ══════════════════════════════════════════════════════════════
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();

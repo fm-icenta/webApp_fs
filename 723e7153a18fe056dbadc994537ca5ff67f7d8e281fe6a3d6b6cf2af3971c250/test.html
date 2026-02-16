@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Chart Test</title>
+</head>
+<body>
+  <h1>Chart.js Test</h1>
+  <canvas id="test"></canvas>
+
+  <!-- Load libraries -->
+  <script src="js/chart.umd.min.js"></script>
+  <script src="js/chartjs-adapter-date-fns.bundle.min.js"></script>
+
+  <!-- Test script -->
+  <script>
+    console.log('Chart.js loaded?', typeof Chart !== 'undefined');
+    console.log('Chart version:', Chart?.version);
+
+    if (typeof Chart !== 'undefined') {
+      const ctx = document.getElementById('test').getContext('2d');
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          datasets: [{
+            label: 'Test',
+            data: [{x: 0, y: 10}, {x: 1, y: 20}]
+          }]
+        },
+        options: {
+          scales: {
+            x: { type: 'linear' }
+          }
+        }
+      });
+      console.log('✓ Chart created successfully!');
+    } else {
+      console.error('✗ Chart.js not loaded!');
+    }
+  </script>
+</body>
+</html>
