@@ -106,17 +106,6 @@
 
   }
 
-  // function sendCommand(cmd) {
-  //   if (typeof sendGlbCmd === 'function') {
-  //     if (_isJsonStr(cmd)){
-  //       _jsonExtractEx(cmd).forEach(cmdObj => {
-  //           console.log(cmdObj);
-  //       });
-  //     }
-  //   } else {
-  //     console.log('FlowSensor →', cmd);
-  //   }
-  // }
 
   // ── Helper: Parse command for display (handles "_" prefix and macro) ──
   function parseCommand(cmdStr) {

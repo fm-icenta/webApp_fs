@@ -147,27 +147,27 @@
     const buttonMatrix = appCfg?.ui?.info_Panel?.button_matrix;
 
 
-    if (!Array.isArray(buttonMatrix)) {
-      console.warn('No valid button_matrix found in appCfg.ui.info_Panel');
-      return frame;
-    }
+    // if (!Array.isArray(buttonMatrix)) {
+    //   console.warn('No valid button_matrix found in appCfg.ui.info_Panel');
+    //   return frame;
+    // }
 
-    const table = window.buildControlTable('info-table', buttonMatrix, (event) => {
-      const { row, side, buttonId: id, value, display } = event;
+    // const table = window.buildControlTable('info-table', buttonMatrix, (event) => {
+    //   const { row, side, buttonId: id, value, display } = event;
 
-      if (!value || !id) {
-        console.warn(`Row ${row} (${side}): missing value or ID`);
-        return;
-      }
+    //   if (!value || !id) {
+    //     console.warn(`Row ${row} (${side}): missing value or ID`);
+    //     return;
+    //   }
 
-      console.log(`Button clicked → ID: ${id} | Value: "${value}"`);
+    //   console.log(`Button clicked → ID: ${id} | Value: "${value}"`);
 
-      // Your real command logic here
-      // const cmd = { action: id, value };
-      // sendGlbCmd({ ble_write: JSON.stringify(cmd) });
-    });
+    //   // Your real command logic here
+    //   // const cmd = { action: id, value };
+    //   // sendGlbCmd({ ble_write: JSON.stringify(cmd) });
+    // });
 
-    frame.appendChild(table);
+    // frame.appendChild(table);
 
     return frame;
   }

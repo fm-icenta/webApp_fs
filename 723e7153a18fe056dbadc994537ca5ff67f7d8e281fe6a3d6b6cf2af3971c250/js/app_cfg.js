@@ -2,7 +2,7 @@ const appCfg = {
     "appInfo" :{
         "title" : "iCenta FlowSensor",
         "description" : "iCenta FlowSensor Web Control Application",
-        "version" : "v0.1.1",
+        "version" : "v0.1.2",
         "build_date" : "260216",
         "release_note" : [
             "add chart.plot",
