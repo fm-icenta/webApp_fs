@@ -85,11 +85,38 @@
 
   function sendCommand(cmd) {
     if (typeof sendGlbCmd === 'function') {
-      sendGlbCmd(cmd);
+      if (_isJsonStr(cmd)){
+        _jsonExtractEx(cmd).forEach(cmdObj => {
+            sendCommandEx(cmdObj);
+        });
+      }
     } else {
       console.log('FlowSensor →', cmd);
     }
   }
+
+  function sendCommandEx(cmdObj){
+
+      if (cmdObj.component == "localtest" ){
+        console.log(cmdObj);     
+      }else{
+        sendGlbCmd(cmdObj)
+        console.log(cmdObj);        
+      }
+
+  }
+
+  // function sendCommand(cmd) {
+  //   if (typeof sendGlbCmd === 'function') {
+  //     if (_isJsonStr(cmd)){
+  //       _jsonExtractEx(cmd).forEach(cmdObj => {
+  //           console.log(cmdObj);
+  //       });
+  //     }
+  //   } else {
+  //     console.log('FlowSensor →', cmd);
+  //   }
+  // }
 
   // ── Helper: Parse command for display (handles "_" prefix and macro) ──
   function parseCommand(cmdStr) {
