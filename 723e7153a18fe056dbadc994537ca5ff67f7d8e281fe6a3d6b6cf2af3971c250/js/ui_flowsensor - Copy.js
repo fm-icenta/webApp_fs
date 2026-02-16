@@ -1,5 +1,5 @@
 // ui_flowsensor.js
-// FlowSensor UI - creates container, delegates chart to chart_plotter.js
+// FlowSensor UI with offline Chart.js (loaded via HTML script tags)
 
 (() => {
   'use strict';
@@ -12,6 +12,121 @@
 
   let lastAccCount = null;
   let lastTimestamp = null;
+  let flowRateChart = null;
+  let rateData = [];
+  let latestRate = 0;
+
+  const CONFIG = {
+    windowSize: 20000,    // 20 seconds
+    maxDataPoints: 200,
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // CHART INITIALIZATION
+  // ══════════════════════════════════════════════════════════════
+
+  function initChart(canvasId, fallbackDiv) {
+    if (flowRateChart) {
+      console.warn('Chart already initialized');
+      return;
+    }
+
+    // Verify Chart.js is loaded
+    if (typeof Chart === 'undefined') {
+      console.error('Chart.js not loaded! Add <script> tags in HTML.');
+      if (fallbackDiv) {
+        fallbackDiv.textContent = '⚠ Chart.js not found';
+        fallbackDiv.style.color = '#f44336';
+      }
+      return;
+    }
+
+    try {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) {
+        throw new Error(`Canvas #${canvasId} not found`);
+      }
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error('Cannot get 2D context');
+      }
+
+      flowRateChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          datasets: [{
+            label: 'Flow Rate (pulses/sec)',
+            borderColor: '#00ff9d',
+            backgroundColor: 'rgba(0, 255, 157, 0.12)',
+            borderWidth: 2,
+            tension: 0.15,
+            fill: true,
+            pointRadius: 0,
+            data: rateData
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 0 },
+          plugins: {
+            legend: {
+              display: true,
+              labels: { color: '#ddd', font: { size: 12 } }
+            },
+            title: {
+              display: true,
+              text: `Real-time Flow Rate (last 20 s) — Latest: 0.0 pulses/sec`,
+              color: '#eee',
+              font: { size: 14 }
+            }
+          },
+          scales: {
+            x: {
+              type: 'time',
+              time: {
+                unit: 'second',
+                displayFormats: { second: 'HH:mm:ss' }
+              },
+              ticks: { 
+                color: '#aaa', 
+                maxTicksLimit: 10, 
+                maxRotation: 45 
+              },
+              grid: { color: '#333' },
+              min: Date.now() - CONFIG.windowSize,
+              max: Date.now()
+            },
+            y: {
+              beginAtZero: true,
+              suggestedMax: 300,
+              ticks: { color: '#aaa', stepSize: 50 },
+              grid: { color: '#333' },
+              title: { 
+                display: true, 
+                text: 'pulses/sec', 
+                color: '#ccc' 
+              }
+            }
+          }
+        }
+      });
+
+      if (fallbackDiv) {
+        fallbackDiv.style.display = 'none';
+      }
+
+      console.log('✓ Chart initialized successfully');
+
+    } catch (err) {
+      console.error('Chart initialization failed:', err);
+      if (fallbackDiv) {
+        fallbackDiv.textContent = `⚠ Chart error: ${err.message}`;
+        fallbackDiv.style.color = '#f44336';
+      }
+    }
+  }
 
   // ══════════════════════════════════════════════════════════════
   // DATA HANDLER
@@ -42,14 +157,35 @@
       }
     }
 
+    latestRate = rate;
+
     const flowrate = Number(cmd.cps ?? NaN);
     const cpsText = !isNaN(flowrate) ? flowrate.toFixed(1) + ' cps' : '—';
 
     window.fsLogger(`RX: acc=${currentAcc}  |  ${cpsText}${rateText}`);
 
-    // Update chart via module API
-    if (window.FlowRateChart) {
-      window.FlowRateChart.addDataPoint(rate, now);
+    // Update chart
+    if (flowRateChart) {
+      rateData.push({ x: now, y: rate });
+
+      // Remove old data outside window
+      const cutoff = now - CONFIG.windowSize;
+      rateData = rateData.filter(p => p.x >= cutoff);
+
+      // Limit array size
+      if (rateData.length > CONFIG.maxDataPoints) {
+        rateData = rateData.slice(-CONFIG.maxDataPoints);
+      }
+
+      flowRateChart.data.datasets[0].data = rateData;
+      flowRateChart.options.scales.x.min = cutoff;
+      flowRateChart.options.scales.x.max = now;
+
+      // Update title with latest rate
+      flowRateChart.options.plugins.title.text =
+        `Real-time Flow Rate (last 20 s) — Latest: ${latestRate.toFixed(1)} pulses/sec`;
+
+      flowRateChart.update('none');
     }
 
     lastAccCount = currentAcc;
@@ -77,6 +213,7 @@
       logDiv.appendChild(line);
       logDiv.scrollTop = logDiv.scrollHeight;
 
+      // Prevent memory bloat
       while (logDiv.children.length > 100) {
         logDiv.firstChild.remove();
       }
@@ -88,33 +225,6 @@
       sendGlbCmd(cmd);
     } else {
       console.log('FlowSensor →', cmd);
-    }
-  }
-
-  // ── Helper: Parse command for display (handles "_" prefix and macro) ──
-  function parseCommand(cmdStr) {
-    if (!cmdStr || typeof cmdStr !== 'string') return cmdStr;
-
-    try {
-      let obj = JSON.parse(cmdStr);
-
-      // Remove keys starting with "_" (like "_": "sensor_pulse")
-      if (typeof removeKeysWithPrefix === 'function') {
-        obj = removeKeysWithPrefix(JSON.stringify(obj));
-        if (typeof obj === 'string') {
-          obj = JSON.parse(obj);
-        }
-      }
-
-      // Extract macro if present
-      if (obj?.macro) {
-        return JSON.stringify(obj.macro);
-      }
-
-      return JSON.stringify(obj);
-
-    } catch (e) {
-      return cmdStr;
     }
   }
 
@@ -252,19 +362,10 @@
     const select = document.createElement('select');
     Object.assign(select.style, { width: '160px', flex: '0 0 auto' });
 
-    // ✅ Populate combobox from config
     const commands = Array.isArray(cfg.Command) ? cfg.Command : [];
-    
-    commands.forEach((cmdObj) => {
+    commands.forEach(cmd => {
       const opt = document.createElement('option');
-      
-      // Display label from "_" key if present, otherwise show full JSON
-      const label = cmdObj._ || JSON.stringify(cmdObj);
-      opt.textContent = label;
-      
-      // Store full command as value
-      opt.value = JSON.stringify(cmdObj);
-      
+      opt.textContent = JSON.stringify(cmd);
       select.appendChild(opt);
     });
 
@@ -272,14 +373,7 @@
     input.type = 'text';
     input.placeholder = 'Enter command (JSON or text)';
     input.style.flex = '1';
-
-    // ✅ Set default value from first non-separator command
-    if (commands.length > 0) {
-      const firstCmd = commands.find(cmd => cmd._ !== '_');
-      if (firstCmd) {
-        input.value = parseCommand(JSON.stringify(firstCmd));
-      }
-    }
+    input.value = commands.length > 0 ? JSON.stringify(commands[0]) : '';
 
     const sendBtn = document.createElement('button');
     sendBtn.textContent = 'Send';
@@ -331,7 +425,7 @@
     logDiv.className = 'fs-log';
     window.fsLogger = createLogger(logDiv);
 
-    // Chart container
+    // Chart
     const chartContainer = document.createElement('div');
     chartContainer.className = 'chart-container';
 
@@ -344,34 +438,14 @@
 
     chartContainer.append(canvas, fallback);
 
-    // Initialize chart via module API
-    setTimeout(() => {
-      if (window.FlowRateChart) {
-        window.FlowRateChart.init('flowRateCanvas', fallback);
-      } else {
-        fallback.textContent = '⚠ chart_plotter.js not loaded';
-        fallback.style.color = '#f44336';
-      }
-    }, 0);
+    // Initialize chart
+    setTimeout(() => initChart('flowRateCanvas', fallback), 0);
 
-    // ── Event: Combobox change ──
+    // Event listeners
     select.addEventListener('change', () => {
-      const rawValue = select.value;
-      
-      // Skip separator entries (those with only "_": "_")
-      try {
-        const obj = JSON.parse(rawValue);
-        if (obj._ === '_' && Object.keys(obj).length === 1) {
-          return; // Don't update input for separators
-        }
-      } catch (e) {
-        // Not JSON, proceed
-      }
-
-      input.value = parseCommand(rawValue);
+      input.value = select.value;
     });
 
-    // ── Event: Send button ──
     sendBtn.addEventListener('click', () => {
       const cmd = input.value.trim();
       if (!cmd) return;
@@ -379,16 +453,13 @@
       let display = cmd;
       try {
         const parsed = JSON.parse(cmd);
-        if (parsed?.action) {
-          display = parsed.action;
-        }
+        if (parsed?.action) display = parsed.action;
       } catch {}
 
       window.fsLogger(`TX: ${display}`);
       sendCommand(cmd);
     });
 
-    // ── Event: Enter key ──
     input.addEventListener('keypress', e => {
       if (e.key === 'Enter') sendBtn.click();
     });
@@ -408,22 +479,8 @@
       return;
     }
 
-  // --- Read config from app_cfg.js ---
-  const cmd_panel_cfg =
-    typeof appCfg !== "undefined" &&
-    appCfg.ui &&
-    appCfg.ui.flowsensor_Panel
-      ? appCfg.ui.flowsensor_Panel
-      : null;
-
-  const framesCfg =
-    cmd_panel_cfg && Array.isArray(cmd_panel_cfg.Frames)
-      ? cmd_panel_cfg.Frames
-      : [];
-
-  const frames = cmd_panel_cfg.Frames
-  console.log("Command_Panel cfg:", cmd_panel_cfg,frames);
-
+    const panelCfg = window.appCfg?.ui?.flowsensor_Panel ?? {};
+    const frames = Array.isArray(panelCfg.Frames) ? panelCfg.Frames : [];
 
     const panelId = 'uiFlowSensorTab';
     let panel = document.getElementById(panelId);
@@ -458,14 +515,7 @@
     const wrapper = document.createElement('div');
     wrapper.className = 'fs-wrapper';
 
-    // ✅ Use first frame from config (or fallback)
-    const frameCfg = frames[0] ?? {
-      Title: 'FlowSensor',
-      Command: [
-        { "_": "Default Command", "component": "pulse", "action": "0:100", "insert_id": "pulser" }
-      ]
-    };
-
+    const frameCfg = frames[0] ?? { Title: 'FlowSensor', Command: [] };
     wrapper.appendChild(buildFrame(frameCfg));
 
     panel.appendChild(wrapper);
