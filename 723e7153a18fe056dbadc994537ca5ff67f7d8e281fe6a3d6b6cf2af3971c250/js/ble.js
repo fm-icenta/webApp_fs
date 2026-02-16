@@ -303,7 +303,9 @@ function onRxObj(data){
     console.log([arguments.callee.name, data])     
 
     if ("insert_id" in data) {
-        addToLogContainer(JSON.stringify(data));        
+        if (data.insert_id != "flowcount"){
+            addToLogContainer(JSON.stringify(data));        
+        }
     }
     
     if (data.devstatus?.led !== undefined) {
@@ -324,9 +326,18 @@ function onRxObj(data){
 
     if (data.insert_id == "log"){
         // console.log("'log", data);
-        onLog(data);
+        onLog(data);   
     }
 
+    if (data.remark == "flowcount"){
+        // console.log("'log", data);
+        onFlowSensorData(data);
+    }
+
+    if (data.insert_id == "flowcount"){
+        onFlowSensorData(data);
+    }
+    
 
 }
 

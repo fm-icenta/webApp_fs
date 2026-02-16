@@ -39,6 +39,20 @@ const appCfg = {
                        
         ],
 
+
+        "flowsensor_Panel":{
+        "Frames": [
+            {
+            "Title": "FlowSensor",
+            "Command": [
+                { "_": "_" } ,      
+                {"_":"sensor_pulse" ,         "component":"pulse","action":"0:23","insert_id":"pulser"},   
+                { "_": "_" }
+            ]
+            }
+        ]
+        },
+
         "Command_Panel":{
         "Frames": [
             {
