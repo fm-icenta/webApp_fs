@@ -60,7 +60,7 @@ window.onFlowSensorData = function (cmd) {
     } else {
       rateText = ' → (Δt too small)';
     }
-  }
+  } 
 
   // Use device-reported rates if available (for display/logging)
   const rxRateReported = Number(cmd.rx_rate ?? NaN);
