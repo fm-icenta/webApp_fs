@@ -9,7 +9,7 @@ const appCfg = {
             "add new command to control the MCU",
         ]
     },
-
+ 
     "appParam" :{
         "connection" : "ble",
         "baud" : 115200,
