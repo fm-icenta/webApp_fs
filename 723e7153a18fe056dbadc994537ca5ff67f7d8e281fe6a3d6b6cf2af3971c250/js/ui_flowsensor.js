@@ -31,6 +31,8 @@ window.onFlowSensorData = function (cmd) {
   const rxNow = Number(cmd.rx_cnt ?? NaN);
   const txNow = Number(cmd.tx_cnt ?? NaN);
 
+  const uptime = Number(cmd.uptime ?? NaN);
+
   if (isNaN(rxNow) || isNaN(txNow)) {
     window.fsLogger('RX/TX: invalid count data', 'warning');
     return;
@@ -54,7 +56,7 @@ window.onFlowSensorData = function (cmd) {
       rxRate = Δrx / Δt_sec;
       txRate = Δtx / Δt_sec;
 
-      rateText = ` → rx: ${rxRate.toFixed(1)} | tx: ${txRate.toFixed(1)} pulses/sec`;
+      rateText = `${uptime} → rx: ${rxRate.toFixed(1)} | tx: ${txRate.toFixed(1)} pulses/sec`;
     } else {
       rateText = ' → (Δt too small)';
     }
