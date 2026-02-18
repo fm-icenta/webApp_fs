@@ -1,6 +1,6 @@
 // chart_plotter.js
-// Standalone real-time chart plotter for flow rate data
-// Requires: Chart.js + chartjs-adapter-date-fns loaded in HTML
+// Real-time dual-line chart for RX and TX flow rates
+// Displays separate 10-sample SMA for RX and TX in the title
 
 (() => {
   'use strict';
@@ -10,24 +10,45 @@
   // ══════════════════════════════════════════════════════════════
 
   let chart = null;
-  let dataPoints = [];
-  let latestRate = 0;
+  let dataPointsRX = [];     // RX rate points
+  let dataPointsTX = [];     // TX rate points
+  let latestRX = 0;
+  let latestTX = 0;
 
   const CONFIG = {
-    windowSize: 20000,      // 20 seconds
+    windowSize: 20000,       // 20 seconds sliding window
     maxDataPoints: 200,
-    updateMode: 'none',     // Chart.js update mode (no animation)
+    updateMode: 'none',      // no animation
+    smaWindow: 10            // moving average over last 10 points
   };
+
+  // ══════════════════════════════════════════════════════════════
+  // HELPERS
+  // ══════════════════════════════════════════════════════════════
+
+  /**
+   * Calculate simple moving average of the last N values
+   * @param {Array<{x:number,y:number}>} points
+   * @param {number} [window=CONFIG.smaWindow]
+   * @returns {number}
+   */
+  function calculateSMA(points, window = CONFIG.smaWindow) {
+    if (points.length < window) return 0;
+
+    const recent = points.slice(-window);
+    const sum = recent.reduce((acc, p) => acc + (p.y || 0), 0);
+    return sum / recent.length;
+  }
 
   // ══════════════════════════════════════════════════════════════
   // PUBLIC API
   // ══════════════════════════════════════════════════════════════
 
   /**
-   * Initialize chart on a canvas element
-   * @param {string} canvasId - ID of the canvas element
-   * @param {HTMLElement} [fallbackDiv] - Optional fallback element for error messages
-   * @returns {boolean} Success status
+   * Initialize the chart on a canvas element
+   * @param {string} canvasId - ID of the canvas
+   * @param {HTMLElement} [fallbackDiv] - Optional fallback element for errors
+   * @returns {boolean} Success
    */
   function init(canvasId, fallbackDiv = null) {
     if (chart) {
@@ -36,7 +57,7 @@
     }
 
     if (typeof Chart === 'undefined') {
-      const msg = 'Chart.js not loaded! Add <script> tags in HTML.';
+      const msg = 'Chart.js not loaded. Include <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> and adapter.';
       console.error(msg);
       if (fallbackDiv) {
         fallbackDiv.textContent = '⚠ Chart.js missing';
@@ -47,28 +68,36 @@
 
     try {
       const canvas = document.getElementById(canvasId);
-      if (!canvas) {
-        throw new Error(`Canvas #${canvasId} not found`);
-      }
+      if (!canvas) throw new Error(`Canvas #${canvasId} not found`);
 
       const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        throw new Error('Cannot get 2D context');
-      }
+      if (!ctx) throw new Error('Cannot get 2D context');
 
       chart = new Chart(ctx, {
         type: 'line',
         data: {
-          datasets: [{
-            label: 'Flow Rate (pulses/sec)',
-            borderColor: '#00ff9d',
-            backgroundColor: 'rgba(0, 255, 157, 0.12)',
-            borderWidth: 2,
-            tension: 0.15,
-            fill: true,
-            pointRadius: 0,
-            data: dataPoints
-          }]
+          datasets: [
+            {
+              label: 'RX Rate (pulses/sec)',
+              borderColor: '#00ff9d',
+              backgroundColor: 'rgba(0, 255, 157, 0.12)',
+              borderWidth: 2,
+              tension: 0.15,
+              fill: true,
+              pointRadius: 0,
+              data: dataPointsRX
+            },
+            {
+              label: 'TX Rate (pulses/sec)',
+              borderColor: '#ff6b6b',
+              backgroundColor: 'rgba(255, 107, 107, 0.12)',
+              borderWidth: 2,
+              tension: 0.15,
+              fill: true,
+              pointRadius: 0,
+              data: dataPointsTX
+            }
+          ]
         },
         options: {
           responsive: true,
@@ -77,11 +106,12 @@
           plugins: {
             legend: {
               display: true,
+              position: 'top',
               labels: { color: '#ddd', font: { size: 12 } }
             },
             title: {
               display: true,
-              text: 'Real-time Flow Rate (last 20 s) — Latest: 0.0 pulses/sec',
+              text: 'Real-time Flow Rates (last 20 s) — RX: 0.0 | TX: 0.0 | SMA-10 RX: 0.0 | SMA-10 TX: 0.0',
               color: '#eee',
               font: { size: 14 }
             }
@@ -117,11 +147,8 @@
         }
       });
 
-      if (fallbackDiv) {
-        fallbackDiv.style.display = 'none';
-      }
-
-      console.log('✓ Chart initialized');
+      if (fallbackDiv) fallbackDiv.style.display = 'none';
+      console.log('✓ Dual-line chart initialized');
       return true;
 
     } catch (err) {
@@ -135,55 +162,78 @@
   }
 
   /**
-   * Add a new data point and update chart
-   * @param {number} rate - Flow rate value (pulses/sec)
-   * @param {number} [timestamp] - Optional timestamp (defaults to now)
+   * Add new RX and TX data points and update chart + SMA values in title
+   * @param {number} rxRate - RX flow rate (pulses/sec)
+   * @param {number} txRate - TX flow rate (pulses/sec)
+   * @param {number} [timestamp=Date.now()] - Timestamp in ms
    */
-  function addDataPoint(rate, timestamp = Date.now()) {
+  function addDataPoint(rxRate, txRate, timestamp = Date.now()) {
     if (!chart) {
       console.warn('Chart not initialized');
       return;
     }
 
-    latestRate = rate;
+    latestRX = rxRate;
+    latestTX = txRate;
 
-    // Add new point
-    dataPoints.push({ x: timestamp, y: rate });
+    const point = { x: timestamp, y: 0 };
 
-    // Remove old data outside window
+    // Add RX
+    point.y = rxRate;
+    dataPointsRX.push({ ...point });
+
+    // Add TX
+    point.y = txRate;
+    dataPointsTX.push({ ...point });
+
+    // Trim old data
     const cutoff = timestamp - CONFIG.windowSize;
-    dataPoints = dataPoints.filter(p => p.x >= cutoff);
+    dataPointsRX = dataPointsRX.filter(p => p.x >= cutoff);
+    dataPointsTX = dataPointsTX.filter(p => p.x >= cutoff);
 
-    // Limit array size
-    if (dataPoints.length > CONFIG.maxDataPoints) {
-      dataPoints = dataPoints.slice(-CONFIG.maxDataPoints);
+    if (dataPointsRX.length > CONFIG.maxDataPoints) {
+      dataPointsRX = dataPointsRX.slice(-CONFIG.maxDataPoints);
+    }
+    if (dataPointsTX.length > CONFIG.maxDataPoints) {
+      dataPointsTX = dataPointsTX.slice(-CONFIG.maxDataPoints);
     }
 
-    // Update chart
-    chart.data.datasets[0].data = dataPoints;
+    // ── Calculate separate 10-sample moving averages ─────────────────────
+    const smaRX = calculateSMA(dataPointsRX);
+    const smaTX = calculateSMA(dataPointsTX);
+
+    // ── Update chart ─────────────────────────────────────────────────────
+    chart.data.datasets[0].data = dataPointsRX;
+    chart.data.datasets[1].data = dataPointsTX;
+
     chart.options.scales.x.min = cutoff;
     chart.options.scales.x.max = timestamp;
 
-    // Update title
+    // Update title with both SMAs
     chart.options.plugins.title.text =
-      `Real-time Flow Rate (last 20 s) — Latest: ${latestRate.toFixed(1)} pulses/sec`;
+      `Real-time Flow Rates (last 20 s) — RX: ${latestRX.toFixed(1)} (SMA-10: ${smaRX.toFixed(1)}) | TX: ${latestTX.toFixed(1)} (SMA-10: ${smaTX.toFixed(1)})`;
 
     chart.update(CONFIG.updateMode);
   }
 
   /**
-   * Clear all data points
+   * Clear all data and reset chart
    */
   function clear() {
     if (!chart) return;
 
-    dataPoints = [];
-    latestRate = 0;
-    chart.data.datasets[0].data = dataPoints;
-    chart.options.plugins.title.text =
-      'Real-time Flow Rate (last 20 s) — Latest: 0.0 pulses/sec';
-    chart.update(CONFIG.updateMode);
+    dataPointsRX = [];
+    dataPointsTX = [];
+    latestRX = 0;
+    latestTX = 0;
 
+    chart.data.datasets[0].data = dataPointsRX;
+    chart.data.datasets[1].data = dataPointsTX;
+
+    chart.options.plugins.title.text =
+      'Real-time Flow Rates (last 20 s) — RX: 0.0 (SMA-10: 0.0) | TX: 0.0 (SMA-10: 0.0)';
+
+    chart.update(CONFIG.updateMode);
     console.log('Chart cleared');
   }
 
@@ -194,30 +244,16 @@
     if (chart) {
       chart.destroy();
       chart = null;
-      dataPoints = [];
-      latestRate = 0;
+      dataPointsRX = [];
+      dataPointsTX = [];
+      latestRX = 0;
+      latestTX = 0;
       console.log('Chart destroyed');
     }
   }
 
   /**
-   * Get current chart instance
-   * @returns {Chart|null}
-   */
-  function getChart() {
-    return chart;
-  }
-
-  /**
-   * Get latest flow rate
-   * @returns {number}
-   */
-  function getLatestRate() {
-    return latestRate;
-  }
-
-  /**
-   * Update config (e.g., window size)
+   * Update configuration options
    * @param {Object} newConfig
    */
   function configure(newConfig) {
@@ -225,17 +261,12 @@
     console.log('Chart config updated:', CONFIG);
   }
 
-  // ══════════════════════════════════════════════════════════════
-  // EXPORT API
-  // ══════════════════════════════════════════════════════════════
-
+  // Export public API
   window.FlowRateChart = {
     init,
     addDataPoint,
     clear,
     destroy,
-    getChart,
-    getLatestRate,
     configure
   };
 

@@ -2,11 +2,11 @@ const appCfg = {
     "appInfo" :{
         "title" : "iCenta FlowSensor",
         "description" : "iCenta FlowSensor Web Control Application",
-        "version" : "v0.1.2",
-        "build_date" : "260216",
+        "version" : "v0.1.4",
+        "build_date" : "260218",
         "release_note" : [
-            "add chart.plot",
-            "add infoTab"
+            "chart.plot support 2 inputs",
+            "add new command to control the MCU",
         ]
     },
 
@@ -51,6 +51,11 @@ const appCfg = {
             "Command": [
                 { "_": "_" } ,      
                 {"_":"sensor_pulse" ,         "component":"pulse","action":"0:23","insert_id":"pulser"},   
+                {"_":"sample_dur",            "component":"flowsensor","action":"0:1","insert_id":"set_sample_dur"},   
+                {"_":"idle_dur",              "component":"flowsensor","action":"1:0","insert_id":"set_idle_dur"},   
+                {"_":"pulse_dir",             "component":"flowsensor","action":"2:0","insert_id":"set_pulse_dir"},   
+                {"_":"pulse_freq",            "component":"flowsensor","action":"3:130","insert_id":"set_pulse_freq"},   
+                {"_":"tx_factor",             "component":"flowsensor","action":"4:0.5","insert_id":"set_tx_factor"},   
                 {"_":"test" ,                 "component":"localtest","action":"123"},   
                 { "_": "_" }
             ]

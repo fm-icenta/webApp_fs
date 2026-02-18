@@ -10,52 +10,80 @@
 
   window.fsLogger = null;
 
-  let lastAccCount = null;
-  let lastTimestamp = null;
-
   // ══════════════════════════════════════════════════════════════
   // DATA HANDLER
   // ══════════════════════════════════════════════════════════════
 
-  window.onFlowSensorData = function (cmd) {
-    if (!cmd || typeof cmd !== 'object' || !window.fsLogger) return;
+  // Global variables (should be declared outside the function, e.g. at module level)
+let lastRxCount     = null;
+let lastTxCount     = null;
+let lastTimestamp   = null;
 
-    const currentAcc = Number(cmd.acc_cnt ?? cmd.data ?? NaN);
-    if (isNaN(currentAcc)) {
-      window.fsLogger('RX: invalid data', 'warning');
-      return;
+// ────────────────────────────────────────────────────────────────
+
+window.onFlowSensorData = function (cmd) {
+  // Expected format example:
+  // {"uptime":"54","tx_cnt":"2723","rx_cnt":"2723","tx_rate":"49.505","rx_rate":"49.505","insert_id":"flowsensor|1s"}
+
+  if (!cmd || typeof cmd !== 'object' || !window.fsLogger) return;
+
+  // ── Extract counts ───────────────────────────────────────────────
+  const rxNow = Number(cmd.rx_cnt ?? NaN);
+  const txNow = Number(cmd.tx_cnt ?? NaN);
+
+  if (isNaN(rxNow) || isNaN(txNow)) {
+    window.fsLogger('RX/TX: invalid count data', 'warning');
+    return;
+  }
+
+  const now = Date.now();
+
+  // ── Calculate rates ──────────────────────────────────────────────
+  let rxRate = 0;
+  let txRate = 0;
+  let rateText = ' → first reading';
+
+  if (lastRxCount !== null && lastTxCount !== null && lastTimestamp !== null) {
+    const Δt_ms  = now - lastTimestamp;
+    const Δt_sec = Δt_ms / 1000;
+
+    if (Δt_sec > 0.001) {
+      const Δrx = rxNow - lastRxCount;
+      const Δtx = txNow - lastTxCount;
+
+      rxRate = Δrx / Δt_sec;
+      txRate = Δtx / Δt_sec;
+
+      rateText = ` → rx: ${rxRate.toFixed(1)} | tx: ${txRate.toFixed(1)} pulses/sec`;
+    } else {
+      rateText = ' → (Δt too small)';
     }
+  }
 
-    const now = Date.now();
-    let rate = 0;
-    let rateText = ' → first reading';
+  // Use device-reported rates if available (for display/logging)
+  const rxRateReported = Number(cmd.rx_rate ?? NaN);
+  const txRateReported = Number(cmd.tx_rate ?? NaN);
 
-    if (lastAccCount !== null && lastTimestamp !== null) {
-      const Δcount = currentAcc - lastAccCount;
-      const Δt_sec = (now - lastTimestamp) / 1000;
+  const rxDisplay = !isNaN(rxRateReported) ? rxRateReported.toFixed(1) + ' cps' : '—';
+  const txDisplay = !isNaN(txRateReported) ? txRateReported.toFixed(1) + ' cps' : '—';
 
-      if (Δt_sec > 0.001) {
-        rate = Δcount / Δt_sec;
-        rateText = ` → ${rate.toFixed(1)} pulses/sec`;
-      } else {
-        rateText = ' → (Δt too small)';
-      }
-    }
+  // window.fsLogger(`RX: acc=${rxNow} | ${rxDisplay}${rateText}`);
+  // window.fsLogger(`TX: acc=${txNow} | ${txDisplay}${rateText}`);
 
-    const flowrate = Number(cmd.cps ?? NaN);
-    const cpsText = !isNaN(flowrate) ? flowrate.toFixed(1) + ' cps' : '—';
+  window.fsLogger(`${rateText}`);
 
-    window.fsLogger(`RX: acc=${currentAcc}  |  ${cpsText}${rateText}`);
+  // ── Update chart ─────────────────────────────────────────────────
+  if (window.FlowRateChart) {
+    // Line 1 (green)  → rx rate (from rx_cnt delta)
+    // Line 2 (red)    → tx rate (from tx_cnt delta)
+    window.FlowRateChart.addDataPoint(rxRate, txRate, now);
+  }
 
-    // Update chart via module API
-    if (window.FlowRateChart) {
-      window.FlowRateChart.addDataPoint(rate, now);
-    }
-
-    lastAccCount = currentAcc;
-    lastTimestamp = now;
-  };
-
+  // ── Update last known values ─────────────────────────────────────
+  lastRxCount   = rxNow;
+  lastTxCount   = txNow;
+  lastTimestamp = now;
+};
   // ══════════════════════════════════════════════════════════════
   // UTILITIES
   // ══════════════════════════════════════════════════════════════
@@ -175,8 +203,8 @@
         color: #0f0;
         padding: 6px;
         font-family: 'Courier New', monospace;
-        font-size: 13px;
-        line-height: 1.4;
+        font-size: 10px;
+        line-height: 1;
       }
       .fs-log-entry {
         margin: 0;
