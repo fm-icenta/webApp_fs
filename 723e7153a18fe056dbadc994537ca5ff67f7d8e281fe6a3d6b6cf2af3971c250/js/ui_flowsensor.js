@@ -359,9 +359,9 @@ window.onFlowSensorData = function (cmd) {
 
     slider.addEventListener('change', () => {
       const payload = {
-        component: 'pulse',
-        action: `0:${slider.value}`,
-        insert_id: 'pulser'
+        component: 'flowsensor',
+        action: `3:${slider.value}`,
+        insert_id: 'set_pulse_freq'
       };
       const jsonString = JSON.stringify(payload);
       input.value = jsonString;
