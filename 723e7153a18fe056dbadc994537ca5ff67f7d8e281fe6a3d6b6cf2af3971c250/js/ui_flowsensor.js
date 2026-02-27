@@ -234,7 +234,7 @@ window.onFlowSensorData = function (cmd) {
         gap: 12px;
         padding: 8px 0;
       }
-      .slider-label {
+      .slider-label { 
         font-size: 13px;
         font-weight: 500;
         min-width: 140px;
