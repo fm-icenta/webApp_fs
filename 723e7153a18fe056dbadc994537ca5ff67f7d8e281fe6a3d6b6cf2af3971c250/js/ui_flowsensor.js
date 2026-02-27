@@ -83,7 +83,14 @@ window.onFlowSensorData = function (cmd) {
   if (window.FlowRateChart) {
     // Line 1 (green)  → rx rate (from rx_cnt delta)
     // Line 2 (red)    → tx rate (from tx_cnt delta)
-    window.FlowRateChart.addDataPoint(rxRate, txRate, now);
+    
+    if (rxDir==1){
+        window.FlowRateChart.addDataPoint(rxRate, txRate, now);
+    }else{
+        window.FlowRateChart.addDataPoint(rxRate * -1, txRate * -1, now);
+    }
+
+
   }
 
   // ── Update last known values ─────────────────────────────────────

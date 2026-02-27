@@ -134,7 +134,7 @@
             },
             y: {
               beginAtZero: true,
-              suggestedMax: 300,
+              suggestedMax: 200,
               ticks: { color: '#aaa', stepSize: 50 },
               grid: { color: '#333' },
               title: {
