@@ -20,7 +20,7 @@
     maxDataPoints: 200,
     updateMode: 'none',      // no animation
     smaWindow: 10            // moving average over last 10 points
-  };
+  }; 
 
   // ══════════════════════════════════════════════════════════════
   // HELPERS
